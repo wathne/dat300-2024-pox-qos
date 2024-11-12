@@ -91,6 +91,8 @@ class LearningSwitch (object):
     #log.debug("Initializing LearningSwitch, transparent=%s",
     #          str(self.transparent))
 
+    self.qos_counter: int = 0
+
   def _handle_PacketIn (self, event):
     """
     Handle packet in messages from the switch to implement above algorithm.
@@ -168,13 +170,19 @@ class LearningSwitch (object):
         msg = of.ofp_flow_mod()
         msg.match = of.ofp_match.from_packet(packet, event.port)
         msg.idle_timeout = 10
-        msg.hard_timeout = 30
-        msg.actions.append(of.ofp_action_output(port = port))
+        if msg.match.nw_tos == 24: # Decimal form of DSCP binary 011000.
+          msg.hard_timeout = 120
+          msg.actions.append(of.ofp_action_enqueue(port = port, queue_id = 0))
+          self.qos_counter += 1
+          print(f"qos_counter = {self.qos_counter}")
+        else:
+          msg.hard_timeout = 30
+          msg.actions.append(of.ofp_action_enqueue(port = port, queue_id = 1))
         msg.data = event.ofp # 6a
         self.connection.send(msg)
 
 
-class l2_learning (object):
+class l2_learning_qos (object):
   """
   Waits for OpenFlow switches to connect and makes them learning switches.
   """
@@ -212,4 +220,4 @@ def launch (transparent=False, hold_down=_flood_delay, ignore = None):
     ignore = ignore.replace(',', ' ').split()
     ignore = set(str_to_dpid(dpid) for dpid in ignore)
 
-  core.registerNew(l2_learning, str_to_bool(transparent), ignore)
+  core.registerNew(l2_learning_qos, str_to_bool(transparent), ignore)
